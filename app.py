@@ -1,5 +1,5 @@
 import streamlit as st
-import sqlite3
+import psycopg2
 import pandas as pd
 from datetime import datetime
 
@@ -8,9 +8,10 @@ from datetime import datetime
 # ============================================================
 @st.cache_resource
 def get_connection():
-    return sqlite3.connect('auto_parts_shop.db', check_same_thread=False)
-
-def init_db():
+    # This pulls your secret database link from Streamlit's secure vault
+    db_url = st.secrets["DATABASE_URL"]
+    # Connect to Supabase (sslmode='require' is needed for cloud security)
+    return psycopg2.connect(db_url, sslmode='require')def init_db():
     conn = get_connection()
     c = conn.cursor()
 
@@ -94,9 +95,46 @@ def get_all_stock_df():
 # ============================================================
 # INITIALIZE
 # ============================================================
-init_db()
-conn = get_connection()
+def init_db():
+    conn = get_connection()
+    c = conn.cursor()
 
+    # 1. Inventory Table (No changes needed here)
+    c.execute('''CREATE TABLE IF NOT EXISTS inventory
+                 (part_number TEXT PRIMARY KEY,
+                  item_name TEXT,
+                  purchase_cost REAL,
+                  starting_stock INTEGER,
+                  reorder_level INTEGER)''')
+
+    # 2. Purchases Table (Changed AUTOINCREMENT to SERIAL)
+    c.execute('''CREATE TABLE IF NOT EXISTS purchases
+                 (id SERIAL PRIMARY KEY,
+                  date TEXT,
+                  part_number TEXT,
+                  quantity INTEGER)''')
+
+    # 3. Sales Table (Changed AUTOINCREMENT to SERIAL)
+    c.execute('''CREATE TABLE IF NOT EXISTS sales
+                 (id SERIAL PRIMARY KEY,
+                  date TEXT,
+                  part_number TEXT,
+                  quantity_sold INTEGER,
+                  sale_price REAL,
+                  total_revenue REAL,
+                  tax_amount REAL,
+                  profit_margin REAL)''')
+
+    # 4. Settings Table (No changes needed here)
+    c.execute('''CREATE TABLE IF NOT EXISTS settings
+                 (key TEXT PRIMARY KEY, value TEXT)''')
+    
+    # 5. Safely add the default tax rate if it doesn't exist yet
+    c.execute("SELECT COUNT(*) FROM settings WHERE key = 'tax_rate'")
+    if c.fetchone()[0] == 0:
+        c.execute("INSERT INTO settings (key, value) VALUES ('tax_rate', '0.10')")
+        
+    conn.commit()
 # ============================================================
 # PAGE CONFIG & SIDEBAR
 # ============================================================
