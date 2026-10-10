@@ -1,22 +1,26 @@
 import streamlit as st
 import psycopg2
-import os
-# ...
+import pandas as pd
+from datetime import datetime
+
 # ============================================================
-# DATABASE SETUP
+# 1. DATABASE CONNECTION (CLOUD)
 # ============================================================
-@st.cache_resource
 @st.cache_resource
 def get_connection():
-    # This pulls your secret database link from Streamlit's secure vault
+    # Pulls the secret link from Streamlit Cloud
     db_url = st.secrets["DATABASE_URL"]
-    # Connect to Supabase (sslmode='require' is needed for cloud security)
+    # Connects to Supabase/PostgreSQL securely
     return psycopg2.connect(db_url, sslmode='require')
+
+# ============================================================
+# 2. INITIALIZE DATABASE TABLES
+# ============================================================
 def init_db():
     conn = get_connection()
     c = conn.cursor()
 
-    # 1. Inventory Table (No changes needed here)
+    # Inventory Table
     c.execute('''CREATE TABLE IF NOT EXISTS inventory
                  (part_number TEXT PRIMARY KEY,
                   item_name TEXT,
@@ -24,14 +28,14 @@ def init_db():
                   starting_stock INTEGER,
                   reorder_level INTEGER)''')
 
-    # 2. Purchases Table (Changed AUTOINCREMENT to SERIAL)
+    # Purchases Table (Using SERIAL for PostgreSQL auto-increment)
     c.execute('''CREATE TABLE IF NOT EXISTS purchases
                  (id SERIAL PRIMARY KEY,
                   date TEXT,
                   part_number TEXT,
                   quantity INTEGER)''')
 
-    # 3. Sales Table (Changed AUTOINCREMENT to SERIAL)
+    # Sales Table (Using SERIAL for PostgreSQL auto-increment)
     c.execute('''CREATE TABLE IF NOT EXISTS sales
                  (id SERIAL PRIMARY KEY,
                   date TEXT,
@@ -42,26 +46,20 @@ def init_db():
                   tax_amount REAL,
                   profit_margin REAL)''')
 
-    # 4. Settings Table (No changes needed here)
-    c.execute('''CREATE TABLE IF NOT EXISTS settings
-                 (key TEXT PRIMARY KEY, value TEXT)''')
-    
-    # 5. Safely add the default tax rate if it doesn't exist yet
-    c.execute("SELECT COUNT(*) FROM settings WHERE key = 'tax_rate'")
-    if c.fetchone()[0] == 0:
-        c.execute("INSERT INTO settings (key, value) VALUES ('tax_rate', '0.10')")
-        
-    conn.commit()
     # Settings Table
     c.execute('''CREATE TABLE IF NOT EXISTS settings
                  (key TEXT PRIMARY KEY, value TEXT)''')
     
-    # Set default tax rate safely
+    # Set default tax rate if it doesn't exist
     c.execute("SELECT COUNT(*) FROM settings WHERE key = 'tax_rate'")
     if c.fetchone()[0] == 0:
         c.execute("INSERT INTO settings (key, value) VALUES ('tax_rate', '0.10')")
         
     conn.commit()
+
+# ============================================================
+# 3. HELPER FUNCTIONS
+# ============================================================
 def get_tax_rate():
     conn = get_connection()
     c = conn.cursor()
@@ -71,23 +69,23 @@ def get_tax_rate():
 def set_tax_rate(rate):
     conn = get_connection()
     c = conn.cursor()
-    c.execute("UPDATE settings SET value = ? WHERE key = 'tax_rate'", (str(rate),))
+    # Note: psycopg2 uses %s for variables, not ?
+    c.execute("UPDATE settings SET value = %s WHERE key = 'tax_rate'", (str(rate),))
     conn.commit()
 
 def get_current_stock(part_number):
     conn = get_connection()
     c = conn.cursor()
-    # Starting stock + purchased - sold
-    c.execute("SELECT starting_stock FROM inventory WHERE part_number = ?", (part_number,))
+    c.execute("SELECT starting_stock FROM inventory WHERE part_number = %s", (part_number,))
     row = c.fetchone()
     if not row:
         return 0
     starting = row[0]
     
-    c.execute("SELECT COALESCE(SUM(quantity), 0) FROM purchases WHERE part_number = ?", (part_number,))
+    c.execute("SELECT COALESCE(SUM(quantity), 0) FROM purchases WHERE part_number = %s", (part_number,))
     bought = c.fetchone()[0]
     
-    c.execute("SELECT COALESCE(SUM(quantity_sold), 0) FROM sales WHERE part_number = ?", (part_number,))
+    c.execute("SELECT COALESCE(SUM(quantity_sold), 0) FROM sales WHERE part_number = %s", (part_number,))
     sold = c.fetchone()[0]
     
     return starting + bought - sold
@@ -106,14 +104,13 @@ def get_all_stock_df():
     return inv
 
 # ============================================================
-# INITIALIZE
+# 4. APP INITIALIZATION & SIDEBAR
 # ============================================================
+# Run database setup
 init_db()
+# Create the main connection for the app pages
 conn = get_connection()
 
-# ============================================================
-# PAGE CONFIG & SIDEBAR
-# ============================================================
 st.set_page_config(page_title="Auto Parts Shop Manager", page_icon="🔧", layout="wide")
 
 st.sidebar.title("🔧 Auto Parts Manager")
@@ -130,21 +127,17 @@ st.title("🚗 Car Spare Parts Shop Management")
 st.markdown("---")
 
 # ============================================================
-# PAGE: DASHBOARD
+# PAGE 1: DASHBOARD
 # ============================================================
 if page == "📊 Dashboard":
     st.header("📊 Business Overview")
 
-    # Key Metrics
     total_revenue = pd.read_sql_query(
         "SELECT COALESCE(SUM(total_revenue), 0) as val FROM sales", conn).iloc[0, 0]
     total_tax = pd.read_sql_query(
         "SELECT COALESCE(SUM(tax_amount), 0) as val FROM sales", conn).iloc[0, 0]
     total_profit = pd.read_sql_query(
         "SELECT COALESCE(SUM(profit_margin), 0) as val FROM sales", conn).iloc[0, 0]
-    total_purchases_cost = pd.read_sql_query(
-        """SELECT COALESCE(SUM(p.quantity * i.purchase_cost), 0) as val 
-           FROM purchases p JOIN inventory i ON p.part_number = i.part_number""", conn).iloc[0, 0]
     total_sales_count = pd.read_sql_query(
         "SELECT COUNT(*) as val FROM sales", conn).iloc[0, 0]
 
@@ -156,7 +149,6 @@ if page == "📊 Dashboard":
 
     st.markdown("---")
 
-    # Low Stock Alerts
     st.subheader("⚠️ Low Stock Alerts")
     stock_df = get_all_stock_df()
     if stock_df.empty:
@@ -169,36 +161,16 @@ if page == "📊 Dashboard":
             st.warning(f"🚨 {len(low_stock)} part(s) need restocking!")
             display_cols = ['part_number', 'item_name', 'current_stock', 'reorder_level']
             st.dataframe(low_stock[display_cols].rename(columns={
-                'part_number': 'Part Number',
-                'item_name': 'Item Name',
-                'current_stock': 'Current Stock',
-                'reorder_level': 'Reorder Level'
+                'part_number': 'Part Number', 'item_name': 'Item Name',
+                'current_stock': 'Current Stock', 'reorder_level': 'Reorder Level'
             }), use_container_width=True)
 
-    st.markdown("---")
-
-    # Recent Sales
-    st.subheader("🕐 Recent Sales (Last 10)")
-    recent = pd.read_sql_query(
-        """SELECT s.date, s.part_number, i.item_name, s.quantity_sold, 
-                  s.total_revenue, s.profit_margin 
-           FROM sales s JOIN inventory i ON s.part_number = i.part_number 
-           ORDER BY s.id DESC LIMIT 10""", conn)
-    if recent.empty:
-        st.info("No sales recorded yet.")
-    else:
-        st.dataframe(recent.rename(columns={
-            'date': 'Date', 'part_number': 'Part #', 'item_name': 'Item',
-            'quantity_sold': 'Qty', 'total_revenue': 'Revenue', 'profit_margin': 'Profit'
-        }), use_container_width=True)
-
 # ============================================================
-# PAGE: INVENTORY
+# PAGE 2: INVENTORY
 # ============================================================
 elif page == "📦 Inventory":
     st.header("📦 Manage Inventory")
 
-    # Add New Part
     with st.expander("➕ Add New Part", expanded=True):
         with st.form("add_part_form"):
             col1, col2 = st.columns(2)
@@ -208,8 +180,7 @@ elif page == "📦 Inventory":
                 purchase_cost = st.number_input("Purchase Cost per Unit ($)", min_value=0.0, step=0.01)
             with col2:
                 starting_stock = st.number_input("Starting Quantity in Stock", min_value=0, step=1)
-                reorder_level = st.number_input("Reorder Level", min_value=0, step=1, value=5,
-                                                help="When stock drops to this number, you'll get an alert.")
+                reorder_level = st.number_input("Reorder Level", min_value=0, step=1, value=5)
 
             submitted = st.form_submit_button("Add Part to Inventory")
             if submitted:
@@ -218,17 +189,16 @@ elif page == "📦 Inventory":
                 else:
                     try:
                         c = conn.cursor()
-                        c.execute("INSERT INTO inventory VALUES (?, ?, ?, ?, ?)",
+                        # Note: psycopg2 uses %s for variables
+                        c.execute("INSERT INTO inventory VALUES (%s, %s, %s, %s, %s)",
                                   (part_number, item_name, purchase_cost, starting_stock, reorder_level))
                         conn.commit()
                         st.success(f"✅ '{item_name}' ({part_number}) added successfully!")
                         st.rerun()
-                    except sqlite3.IntegrityError:
+                    except psycopg2.IntegrityError:
                         st.error(f"❌ Part Number '{part_number}' already exists!")
 
     st.markdown("---")
-
-    # View Inventory
     st.subheader("📋 Current Inventory")
     stock_df = get_all_stock_df()
     if stock_df.empty:
@@ -236,8 +206,6 @@ elif page == "📦 Inventory":
     else:
         display = stock_df[['part_number', 'item_name', 'purchase_cost', 
                             'current_stock', 'reorder_level']].copy()
-        
-        # Add status column
         display['Status'] = display.apply(
             lambda r: "⚠️ LOW" if r['current_stock'] <= r['reorder_level'] else "✅ OK", axis=1)
         
@@ -248,7 +216,7 @@ elif page == "📦 Inventory":
         }), use_container_width=True)
 
 # ============================================================
-# PAGE: RECORD PURCHASE
+# PAGE 3: RECORD PURCHASE
 # ============================================================
 elif page == "🛒 Record Purchase":
     st.header("🛒 Record a Purchase (Restock)")
@@ -258,7 +226,6 @@ elif page == "🛒 Record Purchase":
         st.warning("⚠️ Please add parts to your inventory first!")
     else:
         with st.form("purchase_form"):
-            # Dropdown with part number + name
             options = stock_df['part_number'] + " — " + stock_df['item_name'] + \
                       " (Stock: " + stock_df['current_stock'].astype(str) + ")"
             selected = st.selectbox("Select Part", options)
@@ -269,7 +236,7 @@ elif page == "🛒 Record Purchase":
             submitted = st.form_submit_button("Record Purchase")
             if submitted:
                 c = conn.cursor()
-                c.execute("INSERT INTO purchases (date, part_number, quantity) VALUES (?, ?, ?)",
+                c.execute("INSERT INTO purchases (date, part_number, quantity) VALUES (%s, %s, %s)",
                           (datetime.now().strftime("%Y-%m-%d %H:%M"), part_num, qty))
                 conn.commit()
                 new_stock = get_current_stock(part_num)
@@ -277,7 +244,7 @@ elif page == "🛒 Record Purchase":
                 st.rerun()
 
 # ============================================================
-# PAGE: RECORD SALE
+# PAGE 4: RECORD SALE
 # ============================================================
 elif page == "💰 Record Sale":
     st.header("💰 Record a Sale")
@@ -290,13 +257,11 @@ elif page == "💰 Record Sale":
         st.warning("⚠️ Please add parts to your inventory first!")
     else:
         with st.form("sale_form"):
-            # Dropdown
             options = stock_df['part_number'] + " — " + stock_df['item_name'] + \
                       " (Stock: " + stock_df['current_stock'].astype(str) + ")"
             selected = st.selectbox("Select Part to Sell", options)
             part_num = selected.split(" — ")[0]
 
-            # Get details
             current_stock = stock_df[stock_df['part_number'] == part_num]['current_stock'].iloc[0]
             cost_price = stock_df[stock_df['part_number'] == part_num]['purchase_cost'].iloc[0]
 
@@ -307,7 +272,6 @@ elif page == "💰 Record Sale":
             with col2:
                 sale_price = st.number_input("Sale Price per Unit ($)", min_value=0.0, step=0.01)
 
-            # Live Preview
             if sale_price > 0 and qty > 0:
                 preview_revenue = qty * sale_price
                 preview_tax = preview_revenue * tax_rate
@@ -330,7 +294,7 @@ elif page == "💰 Record Sale":
                 c.execute("""INSERT INTO sales 
                              (date, part_number, quantity_sold, sale_price, 
                               total_revenue, tax_amount, profit_margin) 
-                             VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                             VALUES (%s, %s, %s, %s, %s, %s, %s)""",
                           (datetime.now().strftime("%Y-%m-%d %H:%M"), part_num, qty,
                            sale_price, total_revenue, tax_amount, profit_margin))
                 conn.commit()
@@ -342,7 +306,7 @@ elif page == "💰 Record Sale":
                 st.rerun()
 
 # ============================================================
-# PAGE: SALES HISTORY
+# PAGE 5: SALES HISTORY
 # ============================================================
 elif page == "📜 Sales History":
     st.header("📜 Sales History")
@@ -356,7 +320,6 @@ elif page == "📜 Sales History":
     if sales_df.empty:
         st.info("No sales recorded yet.")
     else:
-        # Summary
         col1, col2, col3 = st.columns(3)
         col1.metric("Total Revenue", f"${sales_df['total_revenue'].sum():,.2f}")
         col2.metric("Total Tax", f"${sales_df['tax_amount'].sum():,.2f}")
@@ -369,12 +332,11 @@ elif page == "📜 Sales History":
             'total_revenue': 'Revenue', 'tax_amount': 'Tax', 'profit_margin': 'Profit'
         }), use_container_width=True)
 
-        # Export to CSV
         csv = sales_df.to_csv(index=False)
         st.download_button("📥 Export Sales to CSV", csv, "sales_history.csv", "text/csv")
 
 # ============================================================
-# PAGE: SETTINGS
+# PAGE 6: SETTINGS
 # ============================================================
 elif page == "⚙️ Settings":
     st.header("⚙️ Settings")
@@ -394,5 +356,5 @@ elif page == "⚙️ Settings":
 
     st.markdown("---")
     st.subheader("Database Info")
-    st.info("Your data is stored locally in a file called `auto_parts_shop.db` "
-            "in the same folder as this app. Back up this file regularly!")
+    st.info("Your data is permanently stored in the cloud database (Supabase). "
+            "It will not disappear when the app goes to sleep!")
