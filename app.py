@@ -20,15 +20,8 @@ def init_db():
     conn = get_connection()
     c = conn.cursor()
 
-    # Drop old tables completely
-    c.execute("DROP TABLE IF EXISTS sales")
-    c.execute("DROP TABLE IF EXISTS purchases")
-    c.execute("DROP TABLE IF EXISTS inventory")
-    c.execute("DROP TABLE IF EXISTS settings")
-    conn.commit()
-
-    # Create fresh tables with correct columns
-    c.execute('''CREATE TABLE inventory
+    # Create tables ONLY if they don't exist
+    c.execute('''CREATE TABLE IF NOT EXISTS inventory
                  (part_number TEXT PRIMARY KEY,
                   item_name TEXT,
                   car_model TEXT,
@@ -36,13 +29,13 @@ def init_db():
                   starting_stock INTEGER,
                   reorder_level INTEGER)''')
 
-    c.execute('''CREATE TABLE purchases
+    c.execute('''CREATE TABLE IF NOT EXISTS purchases
                  (id SERIAL PRIMARY KEY,
                   date TEXT,
                   part_number TEXT,
                   quantity INTEGER)''')
 
-    c.execute('''CREATE TABLE sales
+    c.execute('''CREATE TABLE IF NOT EXISTS sales
                  (id SERIAL PRIMARY KEY,
                   date TEXT,
                   part_number TEXT,
@@ -53,12 +46,35 @@ def init_db():
                   tax_amount REAL,
                   profit_margin REAL)''')
 
-    c.execute('''CREATE TABLE settings
+    c.execute('''CREATE TABLE IF NOT EXISTS settings
                  (key TEXT PRIMARY KEY, value TEXT)''')
-
-    c.execute("INSERT INTO settings (key, value) VALUES ('tax_rate', '0.10')")
+    
+    # Set default tax rate if it doesn't exist
+    c.execute("SELECT COUNT(*) FROM settings WHERE key = 'tax_rate'")
+    if c.fetchone()[0] == 0:
+        c.execute("INSERT INTO settings (key, value) VALUES ('tax_rate', '0.10')")
+    
     conn.commit()
 
+    # Check if inventory table has car_model column, add if missing
+    try:
+        c.execute("""SELECT column_name FROM information_schema.columns 
+                     WHERE table_name='inventory' AND column_name='car_model'""")
+        if not c.fetchone():
+            c.execute("ALTER TABLE inventory ADD COLUMN car_model TEXT")
+            conn.commit()
+    except:
+        conn.rollback()
+
+    # Check if sales table has car_model column, add if missing
+    try:
+        c.execute("""SELECT column_name FROM information_schema.columns 
+                     WHERE table_name='sales' AND column_name='car_model'""")
+        if not c.fetchone():
+            c.execute("ALTER TABLE sales ADD COLUMN car_model TEXT")
+            conn.commit()
+    except:
+        conn.rollback()
 # ============================================================
 # 3. HELPER FUNCTIONS
 # ============================================================
