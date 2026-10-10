@@ -20,10 +20,11 @@ def init_db():
     conn = get_connection()
     c = conn.cursor()
 
-    # Create tables first
+    # Create tables with correct schema from the start
     c.execute('''CREATE TABLE IF NOT EXISTS inventory
                  (part_number TEXT PRIMARY KEY,
                   item_name TEXT,
+                  car_model TEXT,
                   purchase_cost REAL,
                   starting_stock INTEGER,
                   reorder_level INTEGER)''')
@@ -38,6 +39,7 @@ def init_db():
                  (id SERIAL PRIMARY KEY,
                   date TEXT,
                   part_number TEXT,
+                  car_model TEXT,
                   quantity_sold INTEGER,
                   sale_price REAL,
                   total_revenue REAL,
@@ -54,20 +56,28 @@ def init_db():
     
     conn.commit()
 
-    # Now safely add car_model columns if they don't exist
-    # Check if inventory has car_model column
+    # For existing databases: check and add car_model columns
+    # Check inventory table
     c.execute("""SELECT column_name FROM information_schema.columns 
                  WHERE table_name='inventory' AND column_name='car_model'""")
     if not c.fetchone():
-        c.execute("ALTER TABLE inventory ADD COLUMN car_model TEXT")
-        conn.commit()
+        try:
+            c.execute("ALTER TABLE inventory ADD COLUMN car_model TEXT")
+            conn.commit()
+        except Exception as e:
+            print(f"Error adding car_model to inventory: {e}")
+            conn.rollback()
 
-    # Check if sales has car_model column
+    # Check sales table
     c.execute("""SELECT column_name FROM information_schema.columns 
                  WHERE table_name='sales' AND column_name='car_model'""")
     if not c.fetchone():
-        c.execute("ALTER TABLE sales ADD COLUMN car_model TEXT")
-        conn.commit()
+        try:
+            c.execute("ALTER TABLE sales ADD COLUMN car_model TEXT")
+            conn.commit()
+        except Exception as e:
+            print(f"Error adding car_model to sales: {e}")
+            conn.rollback()
 # ============================================================
 # 3. HELPER FUNCTIONS
 # ============================================================
