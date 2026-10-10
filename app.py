@@ -11,7 +11,8 @@ def get_connection():
     # This pulls your secret database link from Streamlit's secure vault
     db_url = st.secrets["DATABASE_URL"]
     # Connect to Supabase (sslmode='require' is needed for cloud security)
-    return psycopg2.connect(db_url, sslmode='require')def init_db():
+    return psycopg2.connect(db_url, sslmode='require')
+def init_db():
     conn = get_connection()
     c = conn.cursor()
 
