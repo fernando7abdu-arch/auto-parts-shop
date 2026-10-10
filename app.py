@@ -14,75 +14,63 @@ def get_connection():
     return psycopg2.connect(db_url, sslmode='require')
 
 # ============================================================
-# 2. INITIALIZE DATABASE
+# 2. INITIALIZE DATABASE (Complete Reset)
 # ============================================================
 def init_db():
     conn = get_connection()
     c = conn.cursor()
-
-    # Clear any broken transaction state
-    try:
-        conn.rollback()
-    except:
-        pass
-
-    # Create tables with explicit schema (public)
-    c.execute('''CREATE TABLE IF NOT EXISTS public.inventory
-                 (part_number TEXT PRIMARY KEY,
-                  item_name TEXT,
-                  car_model TEXT,
-                  purchase_cost REAL,
-                  starting_stock INTEGER,
-                  reorder_level INTEGER)''')
+    
+    # Clear any broken state
+    conn.rollback()
+    
+    # Drop ALL existing tables to start completely fresh
+    c.execute("DROP TABLE IF EXISTS sales")
+    c.execute("DROP TABLE IF EXISTS purchases")
+    c.execute("DROP TABLE IF EXISTS inventory")
+    c.execute("DROP TABLE IF EXISTS settings")
     conn.commit()
-
-    c.execute('''CREATE TABLE IF NOT EXISTS public.purchases
-                 (id SERIAL PRIMARY KEY,
-                  date TEXT,
-                  part_number TEXT,
-                  quantity INTEGER)''')
+    
+    # Create fresh tables with correct schema
+    c.execute("""CREATE TABLE inventory (
+        part_number TEXT PRIMARY KEY,
+        item_name TEXT,
+        car_model TEXT,
+        purchase_cost REAL,
+        starting_stock INTEGER,
+        reorder_level INTEGER
+    )""")
     conn.commit()
-
-    c.execute('''CREATE TABLE IF NOT EXISTS public.sales
-                 (id SERIAL PRIMARY KEY,
-                  date TEXT,
-                  part_number TEXT,
-                  car_model TEXT,
-                  quantity_sold INTEGER,
-                  sale_price REAL,
-                  total_revenue REAL,
-                  tax_amount REAL,
-                  profit_margin REAL)''')
+    
+    c.execute("""CREATE TABLE purchases (
+        id SERIAL PRIMARY KEY,
+        date TEXT,
+        part_number TEXT,
+        quantity INTEGER
+    )""")
     conn.commit()
-
-    c.execute('''CREATE TABLE IF NOT EXISTS public.settings
-                 (key TEXT PRIMARY KEY, value TEXT)''')
+    
+    c.execute("""CREATE TABLE sales (
+        id SERIAL PRIMARY KEY,
+        date TEXT,
+        part_number TEXT,
+        car_model TEXT,
+        quantity_sold INTEGER,
+        sale_price REAL,
+        total_revenue REAL,
+        tax_amount REAL,
+        profit_margin REAL
+    )""")
     conn.commit()
-
+    
+    c.execute("""CREATE TABLE settings (
+        key TEXT PRIMARY KEY,
+        value TEXT
+    )""")
+    conn.commit()
+    
     # Set default tax rate
-    c.execute("SELECT COUNT(*) FROM public.settings WHERE key = 'tax_rate'")
-    if c.fetchone()[0] == 0:
-        c.execute("INSERT INTO public.settings (key, value) VALUES ('tax_rate', '0.10')")
-        conn.commit()
-
-    # Safely add car_model columns if missing
-    try:
-        c.execute("""SELECT column_name FROM information_schema.columns 
-                     WHERE table_schema='public' AND table_name='inventory' AND column_name='car_model'""")
-        if not c.fetchone():
-            c.execute("ALTER TABLE public.inventory ADD COLUMN car_model TEXT")
-            conn.commit()
-    except Exception as e:
-        conn.rollback()
-
-    try:
-        c.execute("""SELECT column_name FROM information_schema.columns 
-                     WHERE table_schema='public' AND table_name='sales' AND column_name='car_model'""")
-        if not c.fetchone():
-            c.execute("ALTER TABLE public.sales ADD COLUMN car_model TEXT")
-            conn.commit()
-    except Exception as e:
-        conn.rollback()
+    c.execute("INSERT INTO settings (key, value) VALUES ('tax_rate', '0.10')")
+    conn.commit()
 
 # ============================================================
 # 3. HELPER FUNCTIONS
@@ -90,35 +78,34 @@ def init_db():
 def get_tax_rate():
     conn = get_connection()
     c = conn.cursor()
-    c.execute("SELECT value FROM public.settings WHERE key = 'tax_rate'")
+    c.execute("SELECT value FROM settings WHERE key = 'tax_rate'")
     return float(c.fetchone()[0])
 
 def set_tax_rate(rate):
     conn = get_connection()
     c = conn.cursor()
-    c.execute("UPDATE public.settings SET value = %s WHERE key = 'tax_rate'", (str(rate),))
+    c.execute("UPDATE settings SET value = %s WHERE key = 'tax_rate'", (str(rate),))
     conn.commit()
 
 def get_current_stock(part_number):
     conn = get_connection()
     c = conn.cursor()
-    c.execute("SELECT starting_stock FROM public.inventory WHERE part_number = %s", (part_number,))
+    c.execute("SELECT starting_stock FROM inventory WHERE part_number = %s", (part_number,))
     row = c.fetchone()
     if not row:
         return 0
     starting = row[0]
-    c.execute("SELECT COALESCE(SUM(quantity), 0) FROM public.purchases WHERE part_number = %s", (part_number,))
+    c.execute("SELECT COALESCE(SUM(quantity), 0) FROM purchases WHERE part_number = %s", (part_number,))
     bought = c.fetchone()[0]
-    c.execute("SELECT COALESCE(SUM(quantity_sold), 0) FROM public.sales WHERE part_number = %s", (part_number,))
+    c.execute("SELECT COALESCE(SUM(quantity_sold), 0) FROM sales WHERE part_number = %s", (part_number,))
     sold = c.fetchone()[0]
     return starting + bought - sold
 
 def get_all_stock_df():
     conn = get_connection()
-    inv = pd.read_sql_query("SELECT part_number, item_name, car_model, purchase_cost, starting_stock, reorder_level FROM public.inventory", conn)
+    inv = pd.read_sql_query("SELECT * FROM inventory", conn)
     if inv.empty:
-        inv['current_stock'] = []
-        return inv
+        return pd.DataFrame(columns=['part_number', 'item_name', 'car_model', 'purchase_cost', 'starting_stock', 'reorder_level', 'current_stock'])
     stocks = []
     for _, row in inv.iterrows():
         stocks.append(get_current_stock(row['part_number']))
@@ -161,10 +148,10 @@ st.markdown("---")
 if page == "📊 Dashboard":
     st.header("📊 Business Overview")
 
-    total_revenue = pd.read_sql_query("SELECT COALESCE(SUM(total_revenue), 0) as val FROM public.sales", conn).iloc[0, 0]
-    total_tax = pd.read_sql_query("SELECT COALESCE(SUM(tax_amount), 0) as val FROM public.sales", conn).iloc[0, 0]
-    total_profit = pd.read_sql_query("SELECT COALESCE(SUM(profit_margin), 0) as val FROM public.sales", conn).iloc[0, 0]
-    total_sales_count = pd.read_sql_query("SELECT COUNT(*) as val FROM public.sales", conn).iloc[0, 0]
+    total_revenue = pd.read_sql_query("SELECT COALESCE(SUM(total_revenue), 0) FROM sales", conn).iloc[0, 0]
+    total_tax = pd.read_sql_query("SELECT COALESCE(SUM(tax_amount), 0) FROM sales", conn).iloc[0, 0]
+    total_profit = pd.read_sql_query("SELECT COALESCE(SUM(profit_margin), 0) FROM sales", conn).iloc[0, 0]
+    total_sales_count = pd.read_sql_query("SELECT COUNT(*) FROM sales", conn).iloc[0, 0]
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("💵 Total Revenue", f"${total_revenue:,.2f}")
@@ -178,7 +165,7 @@ if page == "📊 Dashboard":
         """SELECT SUBSTRING(date FROM 1 FOR 7) as month,
                   SUM(total_revenue) as revenue,
                   SUM(profit_margin) as profit
-           FROM public.sales GROUP BY month ORDER BY month""", conn)
+           FROM sales GROUP BY month ORDER BY month""", conn)
     if not monthly_df.empty:
         fig = px.bar(monthly_df, x='month', y=['revenue', 'profit'],
                      labels={'value': 'Amount ($)', 'month': 'Month', 'variable': 'Metric'},
@@ -224,7 +211,9 @@ elif page == "📦 Inventory":
                 if part_number and item_name:
                     try:
                         c = conn.cursor()
-                        c.execute("INSERT INTO public.inventory (part_number, item_name, car_model, purchase_cost, starting_stock, reorder_level) VALUES (%s, %s, %s, %s, %s, %s)",
+                        c.execute("""INSERT INTO inventory 
+                                     (part_number, item_name, car_model, purchase_cost, starting_stock, reorder_level) 
+                                     VALUES (%s, %s, %s, %s, %s, %s)""",
                                   (part_number, item_name, car_model, purchase_cost, starting_stock, reorder_level))
                         conn.commit()
                         st.success(f"✅ '{item_name}' added successfully!")
@@ -264,7 +253,7 @@ elif page == "🛒 Record Purchase":
             qty = st.number_input("Quantity Bought", min_value=1, step=1)
             if st.form_submit_button("Record Purchase"):
                 c = conn.cursor()
-                c.execute("INSERT INTO public.purchases (date, part_number, quantity) VALUES (%s, %s, %s)",
+                c.execute("INSERT INTO purchases (date, part_number, quantity) VALUES (%s, %s, %s)",
                           (datetime.now().strftime("%Y-%m-%d %H:%M"), part_num, qty))
                 conn.commit()
                 st.success(f"✅ Purchase recorded! '{part_num}' now has **{get_current_stock(part_num)}** units.")
@@ -309,7 +298,8 @@ elif page == "💰 Record Sale":
                 profit_margin = total_revenue - (qty * cost_price) - tax_amount
 
                 c = conn.cursor()
-                c.execute("""INSERT INTO public.sales (date, part_number, car_model, quantity_sold, sale_price, total_revenue, tax_amount, profit_margin)
+                c.execute("""INSERT INTO sales 
+                             (date, part_number, car_model, quantity_sold, sale_price, total_revenue, tax_amount, profit_margin)
                              VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
                           (datetime.now().strftime("%Y-%m-%d %H:%M"), part_num, car_model, qty, sale_price, total_revenue, tax_amount, profit_margin))
                 conn.commit()
@@ -347,7 +337,7 @@ elif page == "📜 Sales History":
     sales_df = pd.read_sql_query(
         """SELECT s.date, s.part_number, i.item_name, s.car_model, s.quantity_sold,
                   s.sale_price, s.total_revenue, s.profit_margin
-           FROM public.sales s JOIN public.inventory i ON s.part_number = i.part_number
+           FROM sales s JOIN inventory i ON s.part_number = i.part_number
            ORDER BY s.id DESC""", conn)
 
     if sales_df.empty:
