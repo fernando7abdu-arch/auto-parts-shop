@@ -20,7 +20,7 @@ def init_db():
     conn = get_connection()
     c = conn.cursor()
 
-    # Inventory Table (Added car_model)
+    # Inventory Table (with car_model)
     c.execute('''CREATE TABLE IF NOT EXISTS inventory
                  (part_number TEXT PRIMARY KEY,
                   item_name TEXT,
@@ -29,8 +29,11 @@ def init_db():
                   starting_stock INTEGER,
                   reorder_level INTEGER)''')
     
-    # Add car_model column if it doesn't exist (for existing databases)
-    c.execute("ALTER TABLE inventory ADD COLUMN IF NOT EXISTS car_model TEXT;")
+    # Safely add car_model column if it doesn't exist (for existing databases)
+    try:
+        c.execute("ALTER TABLE inventory ADD COLUMN IF NOT EXISTS car_model TEXT;")
+    except:
+        pass  # Ignore error if column already exists or other issues
 
     # Purchases Table
     c.execute('''CREATE TABLE IF NOT EXISTS purchases
@@ -39,7 +42,7 @@ def init_db():
                   part_number TEXT,
                   quantity INTEGER)''')
 
-    # Sales Table (Added car_model)
+    # Sales Table (with car_model)
     c.execute('''CREATE TABLE IF NOT EXISTS sales
                  (id SERIAL PRIMARY KEY,
                   date TEXT,
@@ -51,8 +54,11 @@ def init_db():
                   tax_amount REAL,
                   profit_margin REAL)''')
     
-    # Add car_model column to sales if it doesn't exist
-    c.execute("ALTER TABLE sales ADD COLUMN IF NOT EXISTS car_model TEXT;")
+    # Safely add car_model column to sales if it doesn't exist
+    try:
+        c.execute("ALTER TABLE sales ADD COLUMN IF NOT EXISTS car_model TEXT;")
+    except:
+        pass  # Ignore error if column already exists or other issues
 
     # Settings Table
     c.execute('''CREATE TABLE IF NOT EXISTS settings
@@ -63,7 +69,6 @@ def init_db():
         c.execute("INSERT INTO settings (key, value) VALUES ('tax_rate', '0.10')")
         
     conn.commit()
-
 # ============================================================
 # 3. HELPER FUNCTIONS
 # ============================================================
