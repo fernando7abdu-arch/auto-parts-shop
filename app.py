@@ -129,14 +129,14 @@ def require_login():
     password = st.secrets.get("APP_PASSWORD")
     if not password or st.session_state.get("authed"):
         return
-    
+
     # Show logo on login screen
     if os.path.exists("logo.png"):
         st.image("logo.png", width=200)
-    
+
     st.title("Yasmin Spare Parts")
     st.markdown("*Professional Auto Parts Shop Management*")
-    
+
     entered = st.text_input("Password", type="password")
     if st.button("Log in"):
         if hmac.compare_digest(entered.encode(), str(password).encode()):
@@ -200,6 +200,19 @@ def get_all_inventory():
 
 def part_labels(inv_df):
     return {r.part_number: f"{r.part_number} — {r.item_name}" for r in inv_df.itertuples()}
+
+
+def search_inventory(inv_df, text):
+    """Filter inventory by part number, item name or car model (case-insensitive)."""
+    text = (text or "").strip()
+    if not text:
+        return inv_df
+    mask = (
+        inv_df["part_number"].str.contains(text, case=False, na=False, regex=False)
+        | inv_df["item_name"].str.contains(text, case=False, na=False, regex=False)
+        | inv_df["car_model"].str.contains(text, case=False, na=False, regex=False)
+    )
+    return inv_df[mask]
 
 
 # ============================================================
@@ -330,21 +343,12 @@ elif page == "📦 Inventory":
     if inv_df.empty:
         st.info("No parts in inventory yet.")
     else:
-               search = st.text_input(
+        search = st.text_input(
             "🔍 Search inventory",
             placeholder="Part number, item name or car model...",
-        ).strip()
-
-        if search:
-            mask = (
-                inv_df["part_number"].str.contains(search, case=False, na=False, regex=False)
-                | inv_df["item_name"].str.contains(search, case=False, na=False, regex=False)
-                | inv_df["car_model"].str.contains(search, case=False, na=False, regex=False)
-            )
-            filtered = inv_df[mask]
-        else:
-            filtered = inv_df
-
+            key="inventory_search",
+        )
+        filtered = search_inventory(inv_df, search)
         st.caption(f"Showing {len(filtered)} of {len(inv_df)} parts")
 
         if filtered.empty:
