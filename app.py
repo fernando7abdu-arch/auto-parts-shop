@@ -1,3 +1,4 @@
+import base64
 import hmac
 import os
 from datetime import datetime
@@ -19,6 +20,223 @@ TIMEZONE = ZoneInfo("Africa/Nairobi")
 
 def now_str():
     return datetime.now(TIMEZONE).strftime("%Y-%m-%d %H:%M")
+
+
+# ============================================================
+# LOOK & FEEL
+# ============================================================
+def inject_css():
+    st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+:root {
+    --bg: #0b0e14;
+    --card: #151a24;
+    --card-2: #1c2230;
+    --border: rgba(255, 255, 255, 0.08);
+    --text: #e8ecf3;
+    --muted: #8b95a7;
+    --accent: #ff6b35;
+    --accent-2: #ffb347;
+}
+
+html, body, p, label, h1, h2, h3, h4, h5, h6, input, textarea, button {
+    font-family: 'Inter', sans-serif;
+}
+
+/* ---------- Page background ---------- */
+.stApp {
+    background:
+        radial-gradient(1100px 600px at 90% -10%, rgba(255, 107, 53, 0.16), transparent 60%),
+        radial-gradient(900px 500px at -10% 10%, rgba(0, 212, 170, 0.08), transparent 55%),
+        var(--bg);
+    color: var(--text);
+}
+#MainMenu, footer { visibility: hidden; }
+[data-testid="stHeader"] { background: transparent; }
+.block-container { padding-top: 2rem; max-width: 1250px; }
+
+/* ---------- Hero banner ---------- */
+.hero {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 26px 30px;
+    border-radius: 22px;
+    background: linear-gradient(120deg, #ff6b35 0%, #ff8f3d 45%, #8a4fe0 110%);
+    box-shadow: 0 14px 40px rgba(255, 107, 53, 0.28);
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+}
+.hero::after {
+    content: "⚙";
+    position: absolute;
+    right: -10px;
+    top: -35px;
+    font-size: 180px;
+    opacity: 0.13;
+}
+.hero-badge {
+    width: 66px;
+    height: 66px;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.22);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 34px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+.hero-badge img { width: 100%; height: 100%; object-fit: contain; }
+.hero-title { font-size: 2rem; font-weight: 800; color: #fff; line-height: 1.1; letter-spacing: -0.5px; }
+.hero-sub { color: rgba(255, 255, 255, 0.9); font-weight: 500; margin-top: 5px; }
+
+/* ---------- Headings & dividers ---------- */
+h1, h2, h3 { font-weight: 800; letter-spacing: -0.3px; }
+hr {
+    border: none;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 107, 53, 0.55), transparent);
+    margin: 1.5rem 0;
+}
+
+/* ---------- Sidebar ---------- */
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #121722, #0c1018);
+    border-right: 1px solid var(--border);
+}
+[data-testid="stSidebar"] [role="radiogroup"] { gap: 6px; }
+[data-testid="stSidebar"] [role="radiogroup"] > label {
+    border: 1px solid transparent;
+    border-radius: 12px;
+    padding: 10px 14px;
+    width: 100%;
+    transition: all 0.15s ease;
+}
+[data-testid="stSidebar"] [role="radiogroup"] > label:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+[data-testid="stSidebar"] [role="radiogroup"] > label:has(input:checked) {
+    background: linear-gradient(135deg, rgba(255, 107, 53, 0.25), rgba(255, 179, 71, 0.10));
+    border-color: rgba(255, 107, 53, 0.55);
+    font-weight: 700;
+}
+
+/* ---------- Metric cards ---------- */
+[data-testid="stMetric"] {
+    background: linear-gradient(145deg, var(--card), var(--card-2));
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 18px 22px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.2s ease, border-color 0.2s ease;
+}
+[data-testid="stMetric"]::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 5px;
+    background: linear-gradient(180deg, var(--accent), var(--accent-2));
+}
+[data-testid="stMetric"]:hover {
+    transform: translateY(-3px);
+    border-color: rgba(255, 107, 53, 0.5);
+}
+[data-testid="stMetricLabel"] { color: var(--muted); font-weight: 600; }
+[data-testid="stMetricValue"] { font-weight: 800; font-size: 2rem; }
+
+/* ---------- Forms & inputs ---------- */
+[data-testid="stForm"] {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 22px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+[data-baseweb="input"], [data-baseweb="select"] > div, [data-baseweb="base-input"] {
+    border-radius: 10px !important;
+}
+[data-baseweb="input"]:focus-within, [data-baseweb="select"] > div:focus-within {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.22) !important;
+}
+
+/* ---------- Buttons ---------- */
+.stButton > button,
+.stDownloadButton > button,
+[data-testid="stFormSubmitButton"] > button {
+    background: linear-gradient(135deg, var(--accent), #ff8f3d);
+    color: #fff;
+    border: 0;
+    border-radius: 12px;
+    padding: 0.6rem 1.5rem;
+    font-weight: 700;
+    box-shadow: 0 6px 18px rgba(255, 107, 53, 0.35);
+    transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+.stButton > button *,
+.stDownloadButton > button *,
+[data-testid="stFormSubmitButton"] > button * { color: #fff; }
+.stButton > button:hover,
+.stDownloadButton > button:hover,
+[data-testid="stFormSubmitButton"] > button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 26px rgba(255, 107, 53, 0.5);
+    filter: brightness(1.08);
+    border: 0;
+}
+.stButton > button:disabled {
+    opacity: 0.4;
+    box-shadow: none;
+    transform: none;
+}
+
+/* ---------- Tables, alerts ---------- */
+[data-testid="stDataFrame"] {
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+[data-testid="stAlert"] { border-radius: 14px; }
+
+@media (max-width: 640px) {
+    .hero { padding: 18px; gap: 14px; }
+    .hero-title { font-size: 1.4rem; }
+    .hero-badge { width: 52px; height: 52px; }
+}
+</style>
+""", unsafe_allow_html=True)
+
+
+@st.cache_data
+def _logo_data_uri():
+    if not os.path.exists("logo.png"):
+        return None
+    with open("logo.png", "rb") as f:
+        return "data:image/png;base64," + base64.b64encode(f.read()).decode()
+
+
+def render_hero():
+    uri = _logo_data_uri()
+    badge = f'<img src="{uri}" alt="logo">' if uri else "🚗"
+    st.markdown(f"""
+<div class="hero">
+  <div class="hero-badge">{badge}</div>
+  <div>
+    <div class="hero-title">Yasmin Spare Parts</div>
+    <div class="hero-sub">Professional Auto Parts Shop Management</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+
+inject_css()
 
 
 # ============================================================
@@ -130,12 +348,8 @@ def require_login():
     if not password or st.session_state.get("authed"):
         return
 
-    # Show logo on login screen
-    if os.path.exists("logo.png"):
-        st.image("logo.png", width=200)
-
-    st.title("Yasmin Spare Parts")
-    st.markdown("*Professional Auto Parts Shop Management*")
+    render_hero()
+    st.markdown("### 🔐 Sign in")
 
     entered = st.text_input("Password", type="password")
     if st.button("Log in"):
@@ -221,17 +435,10 @@ def search_inventory(inv_df, text):
 require_login()
 setup_database()
 
-col1, col2 = st.columns([1, 4])
-with col1:
-    if os.path.exists("logo.png"):
-        st.image("logo.png", width=120)
-    else:
-        st.markdown("## 🚗🔧")
-with col2:
-    st.title("Yasmin Spare Parts")
-    st.markdown("*Professional Auto Parts Shop Management*")
+render_hero()
 
 st.sidebar.title("🔧 Yasmin Manager")
+st.sidebar.caption(f"🕒 {now_str()}")
 page = st.sidebar.radio("Navigate to:", [
     "📊 Dashboard",
     "📦 Inventory",
@@ -280,8 +487,20 @@ if page == "📊 Dashboard":
         st.markdown("---")
         st.subheader("📅 Daily Revenue and Profit")
         fig = px.bar(daily, x="day", y=["revenue", "profit"], barmode="group",
-                     labels={"day": "Date", "value": f"Amount ({cur})", "variable": ""})
-        st.plotly_chart(fig, use_container_width=True)
+                     labels={"day": "Date", "value": f"Amount ({cur})", "variable": ""},
+                     template="plotly_dark",
+                     color_discrete_sequence=["#ff6b35", "#2ee6a6"])
+        fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            bargap=0.3,
+            margin=dict(l=10, r=10, t=30, b=10),
+            legend=dict(orientation="h", y=1.1, x=0),
+            font=dict(family="Inter, sans-serif"),
+        )
+        fig.update_yaxes(gridcolor="rgba(255,255,255,0.08)")
+        fig.update_xaxes(showgrid=False)
+        st.plotly_chart(fig, use_container_width=True, theme=None)
 
     st.markdown("---")
     st.subheader("⚠️ Low Stock Alerts")
