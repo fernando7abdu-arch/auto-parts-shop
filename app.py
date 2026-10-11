@@ -129,7 +129,14 @@ def require_login():
     password = st.secrets.get("APP_PASSWORD")
     if not password or st.session_state.get("authed"):
         return
-    st.title("🚗 Yasmin Spare Parts")
+    
+    # Show logo on login screen
+    if os.path.exists("logo.png"):
+        st.image("logo.png", width=200)
+    
+    st.title("Yasmin Spare Parts")
+    st.markdown("*Professional Auto Parts Shop Management*")
+    
     entered = st.text_input("Password", type="password")
     if st.button("Log in"):
         if hmac.compare_digest(entered.encode(), str(password).encode()):
