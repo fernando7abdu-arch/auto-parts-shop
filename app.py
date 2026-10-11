@@ -435,7 +435,19 @@ elif page == "💰 Record Sale":
     if inv_df.empty:
         st.warning("Add parts to inventory first!")
     else:
-        labels = part_labels(inv_df)
+        sale_search = st.text_input(
+            "🔍 Search part",
+            placeholder="Part number, item name or car model...",
+            key="sale_search",
+        )
+        matches = search_inventory(inv_df, sale_search)
+        if matches.empty:
+            st.info("No parts match your search.")
+            st.stop()
+        if sale_search.strip():
+            st.caption(f"{len(matches)} matching part(s)")
+
+        labels = part_labels(matches)
         # The part picker lives OUTSIDE the form so the stock limit and
         # cost update immediately when a different part is chosen.
         part_num = st.selectbox("Select Part", list(labels), format_func=labels.get)
