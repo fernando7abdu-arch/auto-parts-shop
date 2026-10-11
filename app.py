@@ -330,14 +330,34 @@ elif page == "📦 Inventory":
     if inv_df.empty:
         st.info("No parts in inventory yet.")
     else:
-        view = inv_df.copy()
-        view["Status"] = view.apply(
-            lambda r: "⚠️ LOW" if r["current_stock"] <= r["reorder_level"] else "✅ OK", axis=1)
-        st.dataframe(view.rename(columns={
-            "part_number": "Part #", "item_name": "Item", "car_model": "Car Model",
-            "purchase_cost": "Cost", "starting_stock": "Starting Stock",
-            "current_stock": "Stock", "reorder_level": "Min Level"}),
-            hide_index=True)
+               search = st.text_input(
+            "🔍 Search inventory",
+            placeholder="Part number, item name or car model...",
+        ).strip()
+
+        if search:
+            mask = (
+                inv_df["part_number"].str.contains(search, case=False, na=False, regex=False)
+                | inv_df["item_name"].str.contains(search, case=False, na=False, regex=False)
+                | inv_df["car_model"].str.contains(search, case=False, na=False, regex=False)
+            )
+            filtered = inv_df[mask]
+        else:
+            filtered = inv_df
+
+        st.caption(f"Showing {len(filtered)} of {len(inv_df)} parts")
+
+        if filtered.empty:
+            st.info("No parts match your search.")
+        else:
+            view = filtered.copy()
+            view["Status"] = view.apply(
+                lambda r: "⚠️ LOW" if r["current_stock"] <= r["reorder_level"] else "✅ OK", axis=1)
+            st.dataframe(view.rename(columns={
+                "part_number": "Part #", "item_name": "Item", "car_model": "Car Model",
+                "purchase_cost": "Cost", "starting_stock": "Starting Stock",
+                "current_stock": "Stock", "reorder_level": "Min Level"}),
+                hide_index=True)
 
         st.markdown("---")
         st.subheader("✏️ Edit or Delete a Part")
